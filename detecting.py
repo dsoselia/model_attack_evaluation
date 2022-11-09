@@ -3,30 +3,47 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
+from pathlib import Path
+from resnet import ResNet18
 
 # cifar10
-transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+train_transform = transforms.Compose(
+    [
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+    ]
+)
+test_transform = transforms.Compose(
+    [
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+    ]
 )
 
 train_set = torchvision.datasets.CIFAR10(
-    root="./data", train=True, download=True, transform=transform
+    root="./data", train=True, download=True, transform=train_transform
 )
 test_set = torchvision.datasets.CIFAR10(
-    root="./data", train=False, download=True, transform=transform
+    root="./data", train=False, download=True, transform=test_transform
 )
 
 # seperate train into two non-overlapping subsets
 
 
-train_1, train_2 = torch.utils.data.random_split(train_set, [25000, 25000])
-train_1, val_1 = torch.utils.data.random_split(train_1, [20000, 5000])
-stealing_set = torch.utils.data.Subset(train_1, range(5000))
-train_2, val_2 = torch.utils.data.random_split(train_2, [20000, 5000])
+# train_1, train_2 = torch.utils.data.random_split(train_set, [25000, 25000])
+# train_1, val_1 = torch.utils.data.random_split(train_1, [20000, 5000])
+# stealing_set = torch.utils.data.Subset(train_1, range(5000))
+# train_2, val_2 = torch.utils.data.random_split(train_2, [20000, 5000])
+
+train_1, val_1 = train_set, test_set
+train_2, val_2 = train_set, test_set
+stealing_set = train_set
 
 # create dataloaders
 num_workers = 8
-batch_size = 128
+batch_size = 64
 
 
 test_loader = torch.utils.data.DataLoader(
@@ -53,23 +70,46 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # train a model on train_1 and validate on val_1
 
 #
-epochs = 10
-model_1 = torchvision.models.resnet18()
-model_1.fc = torch.nn.Linear(512, 10)
+epochs = 50
+optimizer_name = "sgd"
+# model_1 = torchvision.models.resnet18()
+# model_1.fc = torch.nn.Linear(512, 10)
+model_1 = ResNet18()
 model_1 = model_1.to(device)
 
 # make model 2 deep copy of model 1
-model_2 = torchvision.models.resnet18()
-model_2.fc = torch.nn.Linear(512, 10)
+# model_2 = torchvision.models.resnet18()
+# model_2.fc = torch.nn.Linear(512, 10)
+model_2 = ResNet18()
 model_2 = model_2.to(device)
 
 # %%
-def train_model(model, train_loader, val_loader, epochs=100, lr=0.01, momentum=0.9):
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    epochs=100,
+    lr=0.002,
+    momentum=0.9,
+    optimizer_name="adam",
+    save_path=None,
+):
     print("Training model")
+    print("_____Parameters_____")
+    print(f"epochs: {epochs}")
+    print(f"lr: {lr}")
+    print(f"momentum: {momentum}")
+    print(f"optimizer: {optimizer_name}")
+    print("____________________")
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
-
+    if optimizer_name == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+    elif optimizer_name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    else:
+        raise NotImplementedError("Optimizer not implemented")
     for epoch in range(epochs):
+        model.train()
         print(f"Epoch {epoch}")
         running_loss = 0.0
         for i, data in tqdm(enumerate(train_loader, 0), total=len(train_loader)):
@@ -82,13 +122,14 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.01, momentum=0
             optimizer.step()
 
             running_loss += loss.item()
-            if i % 200 == 0:
-                print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 2000))
-                running_loss = 0.0
+
         # validate
         correct = 0
         total = 0
+        print("[%d, %5d] Train loss: %.3f" % (epoch, i + 1, running_loss / i))
+        running_loss = 0.0
         with torch.no_grad():
+            model.eval()
             for data in val_loader:
                 images, labels = data
                 images, labels = images.to(device), labels.to(device)
@@ -97,33 +138,60 @@ def train_model(model, train_loader, val_loader, epochs=100, lr=0.01, momentum=0
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
-        print(
-            "Accuracy of the network on the 10000 test images: %d %%"
-            % (100 * correct / total)
-        )
+        print("Accuracy of the network on the val set: %d %%" % (100 * correct / total))
+        if save_path is not None and epoch % 10 == 0:
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), save_path + f"model_{epoch}.pth")
+    print("Finished Training")
+
     return model
 
 
 # train model_1
+# %%
+load_model = True
 
-model_1 = train_model(model_1, train_loader_1, val_loader_1, epochs=epochs)
+if load_model:
+    model_1.load_state_dict(torch.load("models/model_1/model_20.pth"))
+else:
+    model_1 = train_model(
+        model_1,
+        train_loader_1,
+        val_loader_1,
+        epochs=epochs,
+        save_path="./models/model_1/",
+        optimizer_name=optimizer_name,
+    )
 
 # train model_2
-
-model_2 = train_model(model_2, train_loader_2, val_loader_2, epochs=epochs)
+if load_model:
+    model_1.load_state_dict(torch.load("models/model_1/model_20.pth"))
+else:
+    model_2 = train_model(
+        model_2,
+        train_loader_2,
+        val_loader_2,
+        epochs=epochs,
+        save_path="./models/model_2/",
+        optimizer_name=optimizer_name,
+    )
 
 
 # %%
 # train using stealing_set
 
-stolen_model = torchvision.models.resnet18(pretrained=False)
-stolen_model.fc = torch.nn.Linear(512, 10)
+# stolen_model = torchvision.models.resnet18(pretrained=False)
+# stolen_model.fc = torch.nn.Linear(512, 10)
+stolen_model = ResNet18()
 stolen_model = stolen_model.to(device)
 
 # %%
 criterion = torch.nn.CrossEntropyLoss()
+if optimizer_name == "sgd":
+    optimizer = torch.optim.SGD(stolen_model.parameters(), lr=0.002, momentum=0.9)
+elif optimizer_name == "adam":
+    optimizer = torch.optim.Adam(stolen_model.parameters(), lr=0.001)
 
-optimizer = torch.optim.SGD(stolen_model.parameters(), lr=0.001, momentum=0.9)
 
 for epoch in range(epochs):
     running_loss = 0.0
@@ -159,10 +227,16 @@ for epoch in range(epochs):
             correct += (predicted == labels).sum().item()
 
     print(
-        "Accuracy of the Stolen model on the 10000 test images: %d %%"
+        "Accuracy of the Stolen model on the val set images: %d %%"
         % (100 * correct / total)
     )
 #
+
+# %%
+
+# save stolen model
+Path("models/stolen_model/").mkdir(parents=True, exist_ok=True)
+torch.save(stolen_model.state_dict(), "models/stolen_model/stolen_model.pth")
 
 # eval using paper
 
@@ -189,7 +263,7 @@ def get_random_walk_diff_vector(
         y_pred = y
         model.eval()
         steps_taken = 0
-        while y_pred == y and steps_taken < 5:
+        while y_pred == y and steps_taken < 15:
             y_pred = model(x)
             y_pred = torch.argmax(y_pred, dim=1)
             x = x + step_size * random_direction_matrix
@@ -199,7 +273,7 @@ def get_random_walk_diff_vector(
 
 
 random_direction_matrix_list = []
-random_directions_n = 2
+random_directions_n = 8
 for i in range(random_directions_n):
     random_direction_matrix_list.append(torch.randn(train_set[0][0].shape))
 
@@ -225,7 +299,7 @@ def get_distances_for_model(model, dataset, random_direction_matrix_list, label)
 
 
 distances, distances_labels = get_distances_for_model(
-    model_1, train_loader_1, random_direction_matrix_list, 0
+    model_1, stealing_loader, random_direction_matrix_list, 0
 )
 # concatinate val_loader_1 distances
 val_distances, val_distances_labels = get_distances_for_model(
@@ -233,13 +307,44 @@ val_distances, val_distances_labels = get_distances_for_model(
 )
 distances = distances + val_distances
 distances_labels = distances_labels + val_distances_labels
-
 # %%
 
+distances_labels[:50000] = [0] * 50000
+distances_labels[50000:] = [1] * 10000
+# %%
+
+# save distances
+distances_path = "distances"
+Path(distances_path).mkdir(parents=True, exist_ok=True)
+import pickle
+
+with open(distances_path + "/distances.pkl", "wb") as f:
+    pickle.dump(distances, f, pickle.HIGHEST_PROTOCOL)
+with open(distances_path + "/distances_labels.pkl", "wb") as f:
+    pickle.dump(distances_labels, f, pickle.HIGHEST_PROTOCOL)
+
+# %%
+# balance by undersampling
+import numpy as np
+
+distance_classes = [0, 1]
+samples_per_class = min([distances_labels.count(c) for c in distance_classes])
+
+distances_balanced = []
+distances_labels_balanced = []
+for c in distance_classes:
+    indices = [i for i, x in enumerate(distances_labels) if x == c]
+    indices = np.random.choice(indices, samples_per_class, replace=False)
+    for i in indices:
+        distances_balanced.append(distances[i])
+        distances_labels_balanced.append(distances_labels[i])
+
+distances = distances_balanced
+distances_labels = distances_labels_balanced
+
+# %%
 # train a  two-layer linear network distances and distances_labels binary classification
-# transform_distances = transforms.Compose(
-#     [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
-# )
+
 
 distances = torch.tensor(distances)
 max_distance = torch.max(distances)
@@ -296,7 +401,7 @@ criterion_binary = torch.nn.BCELoss()
 optimizer_binary = torch.optim.SGD(
     binary_classifier.parameters(), lr=0.001, momentum=0.9
 )
-binary_epochs = 5
+binary_epochs = 20
 for epoch in range(binary_epochs):
 
     running_loss = 0.0
@@ -313,9 +418,8 @@ for epoch in range(binary_epochs):
         optimizer_binary.step()
 
         running_loss += loss.item()
-        if i % 2000 == 1999:
-            print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 2000))
-            running_loss = 0.0
+    print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 2000))
+    running_loss = 0.0
 
     correct = 0
     total = 0
@@ -333,6 +437,30 @@ for epoch in range(binary_epochs):
         )
 
 print("Finished Training")
+# %%
+
+# random forests binary classification
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+# scikit learn random split distances, distances_labels
+from sklearn.model_selection import train_test_split
+
+X_train_rf, X_test_rf, y_train_rf, y_test_rf = train_test_split(
+    distances, distances_labels, test_size=0.2, random_state=42
+)
+
+rf = RandomForestClassifier(n_estimators=100, max_depth=2, random_state=0)
+
+rf.fit(X_train_rf, y_train_rf)
+
+y_pred_rf = rf.predict(X_test_rf)
+
+print(
+    "Accuracy of the network on the val images: %d %%"
+    % (100 * accuracy_score(y_test_rf, y_pred_rf))
+)
 # %%
 
 # test model on dataset using binary classifier and return positive classification rate
@@ -412,7 +540,7 @@ def test_if_stolen(
 
 stolen_model_score = test_if_stolen(
     stolen_model,
-    train_loader_1,
+    stealing_loader,
     binary_classifier,
     random_direction_matrix_list,
     max_distance,
@@ -421,7 +549,7 @@ stolen_model_score = test_if_stolen(
 
 model_2_score = test_if_stolen(
     model_2,
-    train_loader_1,
+    stealing_loader,
     binary_classifier,
     random_direction_matrix_list,
     max_distance,
@@ -430,4 +558,5 @@ model_2_score = test_if_stolen(
 print("stolen model score: ", stolen_model_score)
 
 print("model_2 score: ", model_2_score)
+# %%
 # %%
