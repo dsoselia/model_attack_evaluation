@@ -324,6 +324,42 @@ with open(distances_path + "/distances_labels.pkl", "wb") as f:
     pickle.dump(distances_labels, f, pickle.HIGHEST_PROTOCOL)
 
 # %%
+
+# Load distances
+
+with open(distances_path + "/distances.pkl", "rb") as f:
+    distances = pickle.load(f)
+with open(distances_path + "/distances_labels.pkl", "rb") as f:
+    distances_labels = pickle.load(f)
+
+# count how many reached max steps of 15
+
+max_rached_count = 0
+for distance in distances[:50000]:
+    if max(distance) == 15:
+        max_rached_count += 1
+print(max_rached_count)
+
+val_max_rached_count = 0
+for distance in distances[50000:]:
+    if max(distance) == 15:
+        val_max_rached_count += 1
+print(val_max_rached_count)
+
+min_reached_count = 1
+for distance in distances[:50000]:
+    if min(distance) == 1:
+        min_reached_count += 1
+print(min_reached_count)
+
+val_min_reached_count = 1
+for distance in distances[50000:]:
+    if min(distance) == 1:
+        val_min_reached_count += 1
+print(val_min_reached_count)
+
+
+# %%
 # balance by undersampling
 import numpy as np
 
