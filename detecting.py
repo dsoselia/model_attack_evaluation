@@ -261,13 +261,15 @@ def get_random_walk_diff_vector(
         y = y.to(device)
         random_direction_matrix = random_direction_matrix.to(device)
         model.eval()
-        steps_taken = 0
+        steps_taken = np.zeros(len(y))
+        remaining = list(range(len(y)))
         while len(x) > 0 and steps_taken < 15:
-            y_pred = model(x)
-            remaining = (y_pred.max(1)[1] == y)
+            y_pred = model(x[remaining])
+            new_remaining = (y_pred.max(1)[1] == y[remaining])
+            remaining = remaining[new_remaining]
             x = x[remaining] + step_size * random_direction_matrix
             y = y[remaining]
-            steps_taken += 1
+            steps_taken[remaining] += 1
 
     return steps_taken
 
@@ -277,24 +279,20 @@ random_directions_n = 8
 for i in range(random_directions_n):
     random_direction_matrix_list.append(torch.randn(train_set[0][0].shape))
 
+
 # %%
 
 # iterate over train_1 and val_1 and call get_random_walk_diff_vector on each
 def get_distances_for_model(model, dataset, random_direction_matrix_list, label):
     distances = []
-    distances_labels = []
     for inputs, labels in tqdm(dataset, total=len(dataset)):
         print("batch started")
-        for img, label in zip(inputs, labels):
-            k = []
-            for random_direction_matrix in random_direction_matrix_list:
-                steps_taken = get_random_walk_diff_vector(
-                    model, img, label, random_direction_matrix=random_direction_matrix
-                )
-                k.append(steps_taken)
-            distances.append(k)
-            distances_labels.append(label)
-    return distances, distances_labels
+        for random_direction_matrix in random_direction_matrix_list:
+            steps_taken = get_random_walk_diff_vector(
+                model, inputs, labels, random_direction_matrix=random_direction_matrix
+            )
+            distances += steps_taken
+    return np.swapaxes(distances, 0, 1), [label for _ in range(len(distances))]
 
 
 distances, distances_labels = get_distances_for_model(
