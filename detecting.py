@@ -252,7 +252,7 @@ def get_random_walk_diff_vector(
         if len(x_0.shape) == 3:
             x_0 = x_0.unsqueeze(0)
         if random_direction_matrix is None:
-            random_direction_matrix = torch.randn(x.shape)
+            random_direction_matrix = torch.randn(x_0.shape)
             raise NotImplementedError("Not implemented for 3D tensors")
 
         x = x_0.clone().detach()
@@ -260,13 +260,13 @@ def get_random_walk_diff_vector(
         x = x.to(device)
         y = y.to(device)
         random_direction_matrix = random_direction_matrix.to(device)
-        y_pred = y
         model.eval()
         steps_taken = 0
-        while y_pred == y and steps_taken < 15:
+        while len(x) > 0 and steps_taken < 15:
             y_pred = model(x)
-            y_pred = torch.argmax(y_pred, dim=1)
-            x = x + step_size * random_direction_matrix
+            remaining = (y_pred.max(1)[1] == y)
+            x = x[remaining] + step_size * random_direction_matrix
+            y = y[remaining]
             steps_taken += 1
 
     return steps_taken
@@ -281,7 +281,6 @@ for i in range(random_directions_n):
 
 # iterate over train_1 and val_1 and call get_random_walk_diff_vector on each
 def get_distances_for_model(model, dataset, random_direction_matrix_list, label):
-
     distances = []
     distances_labels = []
     for inputs, labels in tqdm(dataset, total=len(dataset)):
