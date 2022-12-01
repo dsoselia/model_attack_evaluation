@@ -1,0 +1,21 @@
+Parameters:
+    - mode: The attack mode used for training
+        ['zero-shot', 'fine-tune', 'extract-label', 'extract-logit', 'distillation', 'teacher', 'independent', 'pre-act-18']
+    - feature_type: attack method used for generate_features
+    - batch_size: set based on memory. Default 100
+    - epochs: depends on time and mode. Default 50
+    - dataset: limited to CIFAR10 and CIFAR100
+    - normalize: 0/1 flag for whether to normalize inputs. For our use, always 1 which is default
+    - model_id: name for the model. Set as {mode}_{un}normalized by default
+    - lr_mode: 0-4 with 0 as low-high, 1 as low-high-low, 2 as a low-high-down-low, 3 as high-high-down-low, and 4 as an exponential down
+    - lr_max/lr_min: max and min values for learning rate
+
+
+Training:
+    - python train.py --mode {attack} --batch_size {memory capabilities} --epochs {time}
+        - Run teacher and independent modes first
+        - Then run as many other possible attacks as possible
+
+Generate Features:
+    - python generate_features.py --feature_type {attack} --batch_size {memory capabilities} --mode {model}
+        - Run in any order for all models
