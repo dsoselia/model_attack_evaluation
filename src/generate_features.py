@@ -6,6 +6,7 @@ from funcs import *
 from models import *
 from train import epoch_test
 from mingd_dataloader import MingdDataset
+import wandb
 
 '''Threat Models'''
 # A) complete model theft
@@ -239,10 +240,20 @@ def get_student_teacher(args):
     return student, teacher
 
 
+def update_args(args, cofig_dict):
+    for key, value in cofig_dict.items():
+        setattr(args, key, value)
+
 if __name__ == "__main__":
     parser = params.parse_args()
     args = parser.parse_args()
     args = params.add_config(args) if args.config_file != None else args
+
+    wandb_config = vars(args)
+    run = wandb.init(project="attack", config=wandb_config)
+    update_args(args, dict(run.config))
+    run.log({"filename": __file__})
+
     print(args)
     device = torch.device("cuda:{0}".format(args.gpu_id) if torch.cuda.is_available() else "cpu")
     root = f"../models/{args.dataset}"

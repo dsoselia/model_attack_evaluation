@@ -9,11 +9,11 @@ from mingd_dataloader import MingdDataset
 from model_src import WideResNet
 from train import trainer
 import params
-
+import wandb
 
 ### Functions ###
 
-def training(args, models):
+def training(args, models, run = None):
     root = f"../models/{args.dataset}"
     for mode, epochs in models.items():
         print(f"\n\n--- Training {mode} model")
@@ -35,7 +35,7 @@ def training(args, models):
             json.dump(args.__dict__, f, indent=2)
             args.device = temp_device
 
-        trainer(args)
+        trainer(args, run)
 
         if args.mode == 'fine-tune':
             args.lr_max = lr_max_temp
@@ -58,6 +58,9 @@ def dataset_generator(args):
         dataset.gen_dataset(args.epochs, args.lr_max, args, verbose=True)
         dataset.save_dataset(f"../data/cust_{args.dataset}/")
 
+def update_args(args, cofig_dict):
+    for key, value in cofig_dict.items():
+        setattr(args, key, value)
 
 ### Run Main ###
 
@@ -65,6 +68,13 @@ if __name__ == "__main__":
     parser = params.parse_args()
     args = parser.parse_args()
     args = params.add_config(args) if args.config_file is not None else args
+
+    wandb_config = vars(args)
+    run = wandb.init(project="attack", config=wandb_config)
+    update_args(args, dict(run.config))
+    run.log({"filename": __file__})
+
+
 
     args.num_classes = {"CIFAR10": 10, "CIFAR100": 100}[args.dataset]
 
@@ -76,7 +86,7 @@ if __name__ == "__main__":
     models = {# 'teacher': 50, 'independent': 30, 'pre-act-18': 30,
               # 'distillation': 30, 'fine-tune': 5,
               'extract-label': 15, 'extract-logit': 15}
-    training(args, models)
+    training(args, models, run)
 
     args.epochs = 200
     args.lr_max = 0.01

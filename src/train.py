@@ -7,6 +7,7 @@ import os
 from model_src import *
 from funcs import *
 import params
+import wandb
 
 '''Threat Models'''
 # A) complete model theft
@@ -119,7 +120,7 @@ def epoch_test(args, loader, model, stop=False):
     return test_loss / test_n, test_acc / test_n
 
 
-def trainer(args):
+def trainer(args, run = None):
     train_loader, test_loader = get_dataloaders(args.dataset, args.batch_size)
     if args.mode == "independent":
         train_loader, test_loader = test_loader, train_loader
@@ -156,6 +157,8 @@ def trainer(args):
         test_loss, test_acc = epoch_test(args, test_loader, student)
         myprint(f'Epoch: {t}, Train Loss: {train_loss:.3f} Train Acc: {train_acc:.3f} '
                 f'Test Acc: {test_acc:.3f}, lr: {lr:.5f}')
+        if run is not None:
+            run.log({"train_loss": train_loss, "train_acc": train_acc, "test_loss": test_loss, "test_acc": test_acc})
 
         if (t + 1) % 25 == 0:
             torch.save(student.state_dict(), f"{args.model_dir}/iter_{t}.pt")

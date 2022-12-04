@@ -12,7 +12,7 @@ from tqdm import tqdm
 from model_src import WideResNet
 from attacks import *
 import params
-
+import wandb
 
 ### Functions ###
 
@@ -88,11 +88,20 @@ class MingdDataset(torch.utils.data.Dataset):
 
 
 ### Run Main ###
+def update_args(args, cofig_dict):
+    for key, value in cofig_dict.items():
+        setattr(args, key, value)
 
 if __name__ == "__main__":
     parser = params.parse_args()
     args = parser.parse_args()
     args = params.add_config(args) if args.config_file is not None else args
+
+    wandb_config = vars(args)
+    run = wandb.init(project="attack", config=wandb_config)
+    update_args(args, dict(run.config))
+    run.log({"filename": __file__})
+
     print(args)
     args.device = torch.device("cuda:{0}".format(args.gpu_id) if torch.cuda.is_available() else "cpu")
     print(args.device)
