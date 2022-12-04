@@ -1,12 +1,12 @@
 from torch import optim
 from tqdm import tqdm
-import params
 import json
 import os
 
 # Local imports
-from funcs import *
 from model_src import *
+from funcs import *
+import params
 
 '''Threat Models'''
 # A) complete model theft
@@ -191,30 +191,22 @@ def get_student_teacher(args):
         raise "Network needs to be un-normalized"
 
     elif mode == "fine-tune":
-        # python train.py --batch_size 1000 --mode fine-tune --lr_max 0.01 --normalize 0 --model_id fine-tune_unnormalized --pseudo_labels 1 --lr_mode 2 --epochs 5 --dataset CIFAR10
-        # python train.py --batch_size 1000 --mode fine-tune --lr_max 0.01 --normalize 1 --model_id fine-tune_normalized --pseudo_labels 1 --lr_mode 2 --epochs 5 --dataset CIFAR10
         student = Net_Arch(n_classes=args.num_classes, depth=deep_full, widen_factor=10, normalize=args.normalize)
         student = nn.DataParallel(student).to(args.device)
         teacher_dir = "model_teacher_normalized" if args.normalize else "model_teacher_unnormalized"
         path = f"../models/{args.dataset}/{teacher_dir}/final"
         student = load(student, path)
         student.train()
-        assert (args.pseudo_labels)
+        # assert (args.pseudo_labels)
 
     elif mode in ["extract-label", "extract-logit"]:
-        # python train.py --batch_size 1000 --mode extract-label --normalize 0 --model_id extract-label_unnormalized --pseudo_labels 1 --lr_mode 2 --epochs 20 --dataset CIFAR10
-        # python train.py --batch_size 1000 --mode extract-label --normalize 1 --model_id extract-label_normalized --pseudo_labels 1 --lr_mode 2 --epochs 20 --dataset CIFAR10
-        # python train.py --batch_size 1000 --mode extract-logit --normalize 0 --model_id extract_unnormalized --pseudo_labels 1 --lr_mode 2 --epochs 20 --dataset CIFAR10
-        # python train.py --batch_size 1000 --mode extract-logit --normalize 1 --model_id extract_normalized --pseudo_labels 1 --lr_mode 2 --epochs 20 --dataset CIFAR10
         student = Net_Arch(n_classes=args.num_classes, depth=deep_half, widen_factor=w_f, normalize=args.normalize)
         student = nn.DataParallel(student).to(args.device)
         student.train()
-        assert (args.pseudo_labels)
+        # assert (args.pseudo_labels)
 
     elif mode in ["distillation", "independent"]:
         dR = 0.3 if mode == "independent" else 0.0
-        # python train.py --batch_size 1000 --mode distillation --normalize 0 --model_id distillation_unnormalized --lr_mode 2 --epochs 50 --dataset CIFAR10
-        # python train.py --batch_size 1000 --mode distillation --normalize 1 --model_id distillation_normalized --lr_mode 2 --epochs 50 --dataset CIFAR10
         student = Net_Arch(n_classes=args.num_classes, depth=deep_half, widen_factor=w_f, normalize=args.normalize,
                            dropRate=dR)
         student = nn.DataParallel(student).to(args.device)
@@ -226,18 +218,14 @@ def get_student_teacher(args):
         student.train()
 
     else:
-        # python train.py --batch_size 1000 --mode teacher --normalize 0 --model_id teacher_unnormalized --lr_mode 2 --epochs 100 --dataset CIFAR10 --dropRate 0.3
-        # python train.py --batch_size 1000 --mode teacher --normalize 1 --model_id teacher_normalized --lr_mode 2 --epochs 100 --dataset CIFAR10 --dropRate 0.3
         student = Net_Arch(n_classes=args.num_classes, depth=deep_full, widen_factor=10, normalize=args.normalize,
                            dropRate=0.3)
         student = nn.DataParallel(student).to(args.device)
         student.train()
-        # Alternate student models: [lr_max = 0.01, epochs = 100], [preactresnet], [dropRate]
 
     return student, teacher
 
 
-# srun --partition rtx6000 --gres=gpu:4 -c 40 --mem=40G python train.py --batch_size 1000 --mode teacher --normalize 0 --model_id teacher_unnormalized --lr_mode 2 --epochs 100 --dataset CIFAR10
 if __name__ == "__main__":
     parser = params.parse_args()
     args = parser.parse_args()
@@ -261,6 +249,4 @@ if __name__ == "__main__":
     print(device)
     torch.cuda.set_device(device)
     torch.manual_seed(args.seed)
-    n_class = {"CIFAR10": 10, "CIFAR100": 100}
-    args.num_classes = n_class[args.dataset]
     trainer(args)

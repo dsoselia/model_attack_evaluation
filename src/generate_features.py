@@ -5,6 +5,7 @@ from attacks import *
 from funcs import *
 from models import *
 from train import epoch_test
+from mingd_dataloader import MingdDataset
 
 '''Threat Models'''
 # A) complete model theft
@@ -171,6 +172,11 @@ def feature_extractor(args):
 
     student.eval()
 
+    if args.data_path:
+        dataset = MingdDataset(student)
+        dataset.load_dataset(args.data_path)
+        train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+
     _, test_acc = epoch_test(args, test_loader, student, stop=True)
     print(f'Model: {args.model_dir} | \t Test Acc: {test_acc:.3f}')
 
@@ -179,13 +185,14 @@ def feature_extractor(args):
 
     func = mapping[args.feature_type]
 
-    test_d = func(args, test_loader, student)
-    print(test_d)
-    torch.save(test_d, f"{args.file_dir}/test_{args.feature_type}_vulnerability_2.pt")
+    if not args.data_path:
+        test_d = func(args, test_loader, student, num_images=50)
+        print(test_d.shape)
+        torch.save(test_d, f"{args.file_dir}/test_{args.feature_type}_vulnerability.pt")
 
-    train_d = func(args, train_loader, student)
-    print(train_d)
-    torch.save(train_d, f"{args.file_dir}/train_{args.feature_type}_vulnerability_2.pt")
+    train_d = func(args, train_loader, student, num_images=50)
+    print(train_d.shape)
+    torch.save(train_d, f"{args.file_dir}/train_{args.feature_type}_vulnerability.pt")
 
 
 def get_student_teacher(args):
@@ -240,7 +247,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:{0}".format(args.gpu_id) if torch.cuda.is_available() else "cpu")
     root = f"../models/{args.dataset}"
     if args.model_id == "0":
-        args.model_id = args.mode + ("_normalized" if args.normalized else "_unnormalized")
+        args.model_id = args.mode + ("_normalized" if args.normalize else "_unnormalized")
     model_dir = f"{root}/model_{args.model_id}"
     print("Model Directory:", model_dir)
     args.model_dir = model_dir
@@ -250,7 +257,7 @@ if __name__ == "__main__":
         file_dir += "_cr"
     print("File Directory:", file_dir)
     args.file_dir = file_dir
-    if (not os.path.exists(file_dir)):
+    if not os.path.exists(file_dir):
         os.makedirs(file_dir)
 
     with open(f"{model_dir}/model_info.txt", "w") as f:
@@ -263,3 +270,21 @@ if __name__ == "__main__":
     n_class = {"CIFAR10": 10, "CIFAR100": 100}
     args.num_classes = n_class[args.dataset]
     feature_extractor(args)
+
+    # args.data_path = "../data/cust_cifar10/train/"
+    # args.file_dir = file_dir + "_cust/train/"
+    # if not os.path.exists(args.file_dir):
+    #     os.makedirs(args.file_dir)
+    # feature_extractor(args)
+    #
+    # args.data_path = "../data/cust_cifar10/test/"
+    # args.file_dir = file_dir + "_cust/test/"
+    # if not os.path.exists(args.file_dir):
+    #     os.makedirs(args.file_dir)
+    # feature_extractor(args)
+    #
+    # args.data_path = "../data/cust_cifar10/random/"
+    # args.file_dir = file_dir + "_cust/random/"
+    # if not os.path.exists(args.file_dir):
+    #     os.makedirs(args.file_dir)
+    # feature_extractor(args)
