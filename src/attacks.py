@@ -127,25 +127,27 @@ def mingd(model, X, y, args, target):
     remaining = (preds.max(1)[1] != target)
     X_r = X[remaining]
     delta_r = delta[remaining]
+    delta_r.requires_grad = True
     for t in range(args.num_iter):
         # Pass inputs as parameters
-        delta_r.requires_grad = True
         preds = model(X_r + delta_r)
-        new_remaining = (preds.max(1)[1] != target[remaining])
-        remaining[remaining] = new_remaining
 
+        # Calculate loss and gradient of inputs
+        loss = -1 * loss_mingd(preds, target[remaining])
+        loss.backward()
+        grads = delta_r.grad.detach()
+
+        # Calculate which inputs have not reached correct predictions
+        new_remaining = (preds.max(1)[1] != target[remaining])
+        remaining[remaining.clone()] = new_remaining
         if remaining.sum() == 0:
             break
 
         # Collect remaining values
         X_r = X[remaining]
         delta_r = delta[remaining]
-        preds = preds[remaining]
-
-        # Calculate loss and gradient of inputs
-        loss = -1 * loss_mingd(preds, target[remaining])
-        loss.backward()
-        grads = delta_r.grad.detach()
+        delta_r.requires_grad = True
+        grads = grads[new_remaining]
 
         # Calculate new offset from gradient
         if args.distance == "linf":
@@ -155,7 +157,6 @@ def mingd(model, X, y, args, target):
         elif args.distance == "l1":
             delta_r.data += alpha * l1_dir_topk(grads, delta_r.data, X_r, args.gap, args.k)
         delta_r.data = torch.min(torch.max(delta_r.detach(), -X_r), 1 - X_r)  # clip X+delta_r[remaining] to [0,1]
-        delta_r.grad.zero_()
         delta[remaining] = delta_r.detach()
 
     print(f"Number of steps = {t + 1} | Failed to convert = {(model(X + delta).max(1)[1] != target).sum().item()} "
