@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 from pathlib import Path
 from resnet import ResNet18
+import numpy as np
 
 # cifar10
 train_transform = transforms.Compose(
@@ -182,54 +183,56 @@ else:
 
 # stolen_model = torchvision.models.resnet18(pretrained=False)
 # stolen_model.fc = torch.nn.Linear(512, 10)
+# %%
+
 stolen_model = ResNet18()
 stolen_model = stolen_model.to(device)
+if load_model:
+    stolen_model.load_state_dict(torch.load("models/stolen_model/stolen_model.pth"))
+else:
+    criterion = torch.nn.CrossEntropyLoss()
+    if optimizer_name == "sgd":
+        optimizer = torch.optim.SGD(stolen_model.parameters(), lr=0.002, momentum=0.9)
+    elif optimizer_name == "adam":
+        optimizer = torch.optim.Adam(stolen_model.parameters(), lr=0.001)
 
-# %%
-criterion = torch.nn.CrossEntropyLoss()
-if optimizer_name == "sgd":
-    optimizer = torch.optim.SGD(stolen_model.parameters(), lr=0.002, momentum=0.9)
-elif optimizer_name == "adam":
-    optimizer = torch.optim.Adam(stolen_model.parameters(), lr=0.001)
+    for epoch in range(epochs):
+        running_loss = 0.0
+        for i, data in enumerate(stealing_loader, 0):
+            inputs, _ = data
+            # obtain labels from model_1
+            inputs = inputs.to(device)
+            labels = model_1(inputs)
+            labels = torch.argmax(labels, dim=1)
+            labels = labels.to(device)
 
+            optimizer.zero_grad()
 
-for epoch in range(epochs):
-    running_loss = 0.0
-    for i, data in enumerate(stealing_loader, 0):
-        inputs, _ = data
-        # obtain labels from model_1
-        inputs = inputs.to(device)
-        labels = model_1(inputs)
-        labels = torch.argmax(labels, dim=1)
-        labels = labels.to(device)
+            outputs = stolen_model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
-        optimizer.zero_grad()
+            running_loss += loss.item()
+            if i % 2000 == 1999:
+                print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 2000))
+                running_loss = 0.0
+        # evaluate acc on val_1 dataloader
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for data in val_loader_1:
+                images, labels = data
+                images, labels = images.to(device), labels.to(device)
+                outputs = stolen_model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
-        outputs = stolen_model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-        if i % 2000 == 1999:
-            print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 2000))
-            running_loss = 0.0
-    # evaluate acc on val_1 dataloader
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for data in val_loader_1:
-            images, labels = data
-            images, labels = images.to(device), labels.to(device)
-            outputs = stolen_model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    print(
-        "Accuracy of the Stolen model on the val set images: %d %%"
-        % (100 * correct / total)
-    )
+        print(
+            "Accuracy of the Stolen model on the val set images: %d %%"
+            % (100 * correct / total)
+        )
 #
 
 # %%
@@ -261,17 +264,21 @@ def get_random_walk_diff_vector(
         y = y.to(device)
         random_direction_matrix = random_direction_matrix.to(device)
         model.eval()
-        steps_taken = np.zeros(len(y))
+        steps_taken = torch.zeros(len(y))
         remaining = list(range(len(y)))
-        while len(x) > 0 and steps_taken < 15:
+        remaining = torch.tensor(remaining).to(device)
+        while len(x) > 0 and max(steps_taken) < 20:
             y_pred = model(x[remaining])
-            new_remaining = (y_pred.max(1)[1] == y[remaining])
+            new_remaining = y_pred.max(1)[1] == y[remaining]
+            # move new_remaining to numpy
+            print("new_remaining", new_remaining)
+            print("remaining", remaining)
             remaining = remaining[new_remaining]
-            x = x[remaining] + step_size * random_direction_matrix
-            y = y[remaining]
+            x = x + step_size * random_direction_matrix
+            y = y
             steps_taken[remaining] += 1
 
-    return steps_taken
+    return steps_taken.cpu().numpy()
 
 
 random_direction_matrix_list = []
@@ -287,11 +294,13 @@ def get_distances_for_model(model, dataset, random_direction_matrix_list, label)
     distances = []
     for inputs, labels in tqdm(dataset, total=len(dataset)):
         print("batch started")
+        distances_temp = []
         for random_direction_matrix in random_direction_matrix_list:
             steps_taken = get_random_walk_diff_vector(
                 model, inputs, labels, random_direction_matrix=random_direction_matrix
             )
-            distances += steps_taken
+            distances_temp.append(steps_taken)
+        distances.append(distances_temp)
     return np.swapaxes(distances, 0, 1), [label for _ in range(len(distances))]
 
 
