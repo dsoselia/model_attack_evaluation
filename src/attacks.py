@@ -159,8 +159,8 @@ def mingd(model, X, y, args, target):
         delta_r.data = torch.min(torch.max(delta_r.detach(), -X_r), 1 - X_r)  # clip X+delta_r[remaining] to [0,1]
         delta[remaining] = delta_r.detach()
 
-    print(f"Number of steps = {t + 1} | Failed to convert = {(model(X + delta).max(1)[1] != target).sum().item()} "
-          f"| Time taken = {time.time() - start}")
+    # print(f"Number of steps = {t + 1} | Failed to convert = {(model(X + delta).max(1)[1] != target).sum().item()} "
+    #       f"| Time taken = {time.time() - start}")
     if is_training:
         model.train()
     return delta

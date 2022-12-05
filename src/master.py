@@ -121,5 +121,6 @@ if __name__ == "__main__":
     models = ['teacher', 'independent', 'distillation', 'pre-act-18']
     args.num_iters = 250  # Maximum number of steps
     args.epochs = 100  # Number of pieces of data generate features for
+    args.batch_size = 50  # Based on space. Preferable a factor of args.epochs
     args.data_path = "../data/cust_cifar10/"  # Path to custom data or None for only original data
     gen_features(args, models)

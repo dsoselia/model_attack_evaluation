@@ -1,4 +1,6 @@
 import json
+import sys
+
 import params
 import os
 from attacks import *
@@ -7,6 +9,8 @@ from models import *
 from train import epoch_test
 from mingd_dataloader import MingdDataset
 import wandb
+from tqdm import tqdm
+from math import ceil
 
 '''Threat Models'''
 # A) complete model theft
@@ -132,6 +136,7 @@ def get_mingd_vulnerability(args, loader, model, num_images=1000):
     max_iter = num_images / batch_size
     lp_dist = [[], [], []]
     ex_skipped = 0
+    pbar = tqdm(total=ceil(max_iter) * 3 * args.num_classes, file=sys.stdout)
     for i, batch in enumerate(loader):
         if args.regressor_embed == 1:
             if ex_skipped < num_images:
@@ -141,12 +146,13 @@ def get_mingd_vulnerability(args, loader, model, num_images=1000):
         for j, distance in enumerate(["linf", "l2", "l1"]):
             temp_list = []
             for target_i in range(args.num_classes):
-                X, y = batch[0].to(device), batch[1].to(device)
+                X, y = batch[0].to(args.device), batch[1].to(args.device)
                 args.distance = distance
                 delta = mingd(model, X, y, args, target=y * 0 + target_i)
                 distance_dict = {"linf": norms_linf_squeezed, "l1": norms_l1_squeezed, "l2": norms_l2_squeezed}
                 distances = distance_dict[distance](delta)
                 temp_list.append(distances.cpu().detach().unsqueeze(-1))
+                pbar.update()
             # temp_dist = [batch_size, num_classes)]
             temp_dist = torch.cat(temp_list, dim=1)
             lp_dist[j].append(temp_dist)
@@ -181,23 +187,28 @@ def feature_extractor(args):
 
     func = mapping[args.feature_type]
 
+    print("\nTest set features:")
     test_d = func(args, test_loader, student, num_images=args.epochs)
     torch.save(test_d, f"{args.file_dir}/test_{args.feature_type}_vulnerability.pt")
 
+    print("\nTrain set features:")
     train_d = func(args, train_loader, student, num_images=args.epochs)
     torch.save(train_d, f"{args.file_dir}/train_{args.feature_type}_vulnerability.pt")
 
     if args.data_path:
+        print("\nCustom Train set features:")
         dataloader = DataLoader(MingdDataset(student, args.data_path + "/train"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
         torch.save(train_d, f"{args.file_dir}/cust_train_{args.feature_type}_vulnerability.pt")
 
+        print("\nCustom Test set features:")
         dataloader = DataLoader(MingdDataset(student, args.data_path + "/test"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
         torch.save(train_d, f"{args.file_dir}/cust_test_{args.feature_type}_vulnerability.pt")
 
+        print("\nCustom Random set features:")
         dataloader = DataLoader(MingdDataset(student, args.data_path + "/random"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
