@@ -173,11 +173,6 @@ def feature_extractor(args):
 
     student.eval()
 
-    if args.data_path:
-        dataset = MingdDataset(student)
-        dataset.load_dataset(args.data_path)
-        train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-
     _, test_acc = epoch_test(args, test_loader, student, stop=True)
     print(f'Model: {args.model_dir} | \t Test Acc: {test_acc:.3f}')
 
@@ -186,14 +181,27 @@ def feature_extractor(args):
 
     func = mapping[args.feature_type]
 
-    if not args.data_path:
-        test_d = func(args, test_loader, student, num_images=50)
-        print(test_d.shape)
-        torch.save(test_d, f"{args.file_dir}/test_{args.feature_type}_vulnerability.pt")
+    test_d = func(args, test_loader, student, num_images=args.epochs)
+    torch.save(test_d, f"{args.file_dir}/test_{args.feature_type}_vulnerability.pt")
 
-    train_d = func(args, train_loader, student, num_images=50)
-    print(train_d.shape)
+    train_d = func(args, train_loader, student, num_images=args.epochs)
     torch.save(train_d, f"{args.file_dir}/train_{args.feature_type}_vulnerability.pt")
+
+    if args.data_path:
+        dataloader = DataLoader(MingdDataset(student, args.data_path + "/train"),
+                                batch_size=args.batch_size, shuffle=True)
+        train_d = func(args, dataloader, student, num_images=args.epochs)
+        torch.save(train_d, f"{args.file_dir}/cust_train_{args.feature_type}_vulnerability.pt")
+
+        dataloader = DataLoader(MingdDataset(student, args.data_path + "/test"),
+                                batch_size=args.batch_size, shuffle=True)
+        train_d = func(args, dataloader, student, num_images=args.epochs)
+        torch.save(train_d, f"{args.file_dir}/cust_test_{args.feature_type}_vulnerability.pt")
+
+        dataloader = DataLoader(MingdDataset(student, args.data_path + "/random"),
+                                batch_size=args.batch_size, shuffle=True)
+        train_d = func(args, dataloader, student, num_images=args.epochs)
+        torch.save(train_d, f"{args.file_dir}/cust_random_{args.feature_type}_vulnerability.pt")
 
 
 def get_student_teacher(args):
@@ -244,6 +252,7 @@ def update_args(args, cofig_dict):
     for key, value in cofig_dict.items():
         setattr(args, key, value)
 
+
 if __name__ == "__main__":
     parser = params.parse_args()
     args = parser.parse_args()
@@ -280,22 +289,5 @@ if __name__ == "__main__":
 
     n_class = {"CIFAR10": 10, "CIFAR100": 100}
     args.num_classes = n_class[args.dataset]
+    args.data_path = "../data/cust_cifar10/"
     feature_extractor(args)
-
-    # args.data_path = "../data/cust_cifar10/train/"
-    # args.file_dir = file_dir + "_cust/train/"
-    # if not os.path.exists(args.file_dir):
-    #     os.makedirs(args.file_dir)
-    # feature_extractor(args)
-    #
-    # args.data_path = "../data/cust_cifar10/test/"
-    # args.file_dir = file_dir + "_cust/test/"
-    # if not os.path.exists(args.file_dir):
-    #     os.makedirs(args.file_dir)
-    # feature_extractor(args)
-    #
-    # args.data_path = "../data/cust_cifar10/random/"
-    # args.file_dir = file_dir + "_cust/random/"
-    # if not os.path.exists(args.file_dir):
-    #     os.makedirs(args.file_dir)
-    # feature_extractor(args)

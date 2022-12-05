@@ -6,3 +6,4 @@ files/
 *.pyc
 src/__pycache__/
 *.pkl
+.idea/
