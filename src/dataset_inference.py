@@ -21,17 +21,17 @@ random.seed(0)
 # Parameters
 dataset = "CIFAR10"
 v_type = "mingd"
-root_path = "C:/Users/hasso/Desktop/College/2022Fall/CMSC614/dataset_inference_datafree/files"
-params_path = "C:/Users/hasso/Desktop/College/2022Fall/CMSC614/dataset_inference_datafree/src"
+root_path = "../files"
+params_path = "../src"
 split_index = 500
 root = os.path.join(root_path, dataset)
 
 
 ### Functions ###
 
-def load_data(folder, normalize=None, flag=0):
+def load_data(folder, train_set, normalize=None, flag=0):
     # Load data
-    train = (torch.load(f"{folder}/train_{v_type}_vulnerability.pt"))
+    train = (torch.load(f"{folder}/{train_set}_{v_type}_vulnerability.pt"))
     test = (torch.load(f"{folder}/test_{v_type}_vulnerability.pt"))
 
     if normalize is None:
@@ -43,26 +43,27 @@ def load_data(folder, normalize=None, flag=0):
     train = train.reshape(train.shape[0], -1)
     test = test.reshape(test.shape[0], -1)
 
-    data = torch.cat((train, test), dim=0).reshape((-1, 30))
-    y = torch.cat((torch.zeros(train.shape[0]), torch.ones(test.shape[0])), dim=0)
-    rand = torch.randperm(y.shape[0])
-    data = data[rand]
-    y = y[rand]
-
     if flag == 1:
         return train, torch.zeros(train.shape[0]), normalize
     elif flag == 2:
-        return test, torch.ones(train.shape[0]), normalize
-    return data, y, normalize
+        return test, torch.ones(test.shape[0]), normalize
+
+    data = torch.cat((train, test), dim=0).reshape((-1, 30))
+    target = torch.cat((torch.zeros(train.shape[0]), torch.ones(test.shape[0])), dim=0)
+    rand = torch.randperm(target.shape[0])
+    data = data[rand]
+    target = target[rand]
+
+    return data, target, normalize
 
 
-def train_membership_inference(data, target):
+def train_membership_inference(data, target, epochs=1000):
     model = nn.Sequential(nn.Linear(30, 100), nn.ReLU(), nn.Linear(100, 1), nn.Sigmoid())
     criterion = nn.BCELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
-    with tqdm(range(1000)) as pbar:
-        for epoch in pbar:
+    with tqdm(range(epochs), file=sys.stdout) as pbar:
+        for _ in pbar:
             optimizer.zero_grad()
             preds = model(data).squeeze()
             loss = criterion(preds, target)
@@ -78,24 +79,38 @@ def eval_model(model, data, target):
     print(torch.sum(preds == target).item() / len(target))
 
 
+def get_p(outputs_train, outputs_test):
+    pred_test = outputs_test[:, 0].detach().cpu().numpy()
+    pred_train = outputs_train[:, 0].detach().cpu().numpy()
+    tval, pval = ttest_ind(pred_test, pred_train, alternative="greater", equal_var=False)
+    if pval < 0:
+        raise Exception(f"p-value={pval}")
+    return pval
+
+
+def print_inference(outputs_train, outputs_test):
+    m1, m2 = outputs_test[:, 0].mean(), outputs_train[:, 0].mean()
+    pval = get_p(outputs_train, outputs_test)
+    print(f"p-value = {pval} \t| Mean difference = {m1 - m2}")
+
+
+def eval_modes(modes, dataset_name):
+    data, y, normalize = load_data(f"{root}/model_{modes[0]}_normalized", dataset_name)
+    mem_infer_model = train_membership_inference(data, y)
+
+    for mode in modes:
+        print(mode)
+        data, y, _ = load_data(f"{root}/model_{mode}_normalized", dataset_name, normalize=normalize)
+        outputs = mem_infer_model(data)
+        print_inference(outputs[y == 0], outputs[y == 1])
+
+
 ### Run Main ###
 
 if __name__ == "__main__":
-    name = "teacher"
+    modes = ['teacher', 'independent', 'distillation', 'pre-act-18']
+    dist_data = ['train', 'cust_train', 'cust_test', 'cust_random']
 
-    data, y, normalize = load_data(f"{root}/model_{name}_normalized")
-    print(data.abs().mean())
-    mem_inf_model = train_membership_inference(data, y)
-    eval_model(mem_inf_model, data, y)
-
-    data, y, _ = load_data(f"{root}/model_{name}_normalized", normalize=normalize, flag=2)
-    print(data.abs().mean())
-    eval_model(mem_inf_model, data, y)
-
-    data, y, _ = load_data(f"{root}/model_{name}_normalized_cust/train", normalize=normalize, flag=1)
-    print(data.abs().mean())
-    eval_model(mem_inf_model, data, y)
-
-    data, y, _ = load_data(f"{root}/model_{name}_normalized_cust/test", normalize=normalize, flag=1)
-    print(data.abs().mean())
-    eval_model(mem_inf_model, data, y)
+    for dataset in dist_data:
+        print(f"\nTraining on test data and {dataset} data:")
+        eval_modes(modes, dataset)
