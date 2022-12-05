@@ -1,29 +1,29 @@
 ### Imports ###
-import sys
-import os
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import torch
-import numpy as np
 from tqdm import tqdm
+import wandb
+import sys
+import os
 
 # Local Imports
 from model_src import WideResNet
 from attacks import *
 import params
-import wandb
+
 
 ### Functions ###
 
 class MingdDataset(torch.utils.data.Dataset):
-    def __init__(self, model, transform=None):
+    def __init__(self, model, transform=None, load_data=None):
         model.eval()
         self.model = model
         self.transform = transform
         self.shape = (3, 32, 32)
         self.data = torch.tensor([])
         self.targets = torch.tensor([])
+        if load_data:
+            self.load_dataset(load_data)
 
     def __getitem__(self, index):
         data = self.data[index]
@@ -32,7 +32,7 @@ class MingdDataset(torch.utils.data.Dataset):
         return data, self.targets[index].long()
 
     def __len__(self):
-        return len(self.data)
+        return self.data.shape[0]
 
     def gen_data_batch(self, num, lr, args, verbose=False, batch=None):
         if batch:
@@ -87,10 +87,12 @@ class MingdDataset(torch.utils.data.Dataset):
             self.targets = torch.load(f)
 
 
-### Run Main ###
 def update_args(args, cofig_dict):
     for key, value in cofig_dict.items():
         setattr(args, key, value)
+
+
+### Run Main ###
 
 if __name__ == "__main__":
     parser = params.parse_args()
