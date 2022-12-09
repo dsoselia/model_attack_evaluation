@@ -16,8 +16,9 @@ import params
 
 class MingdDataset(torch.utils.data.Dataset):
     def __init__(self, model, transform=None, load_data=None):
-        model.eval()
         self.model = model
+        if self.model:
+            model.eval()
         self.transform = transform
         self.shape = (3, 32, 32)
         self.data = torch.tensor([])

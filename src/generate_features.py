@@ -197,19 +197,19 @@ def feature_extractor(args):
 
     if args.data_path:
         print("\nCustom Train set features:")
-        dataloader = DataLoader(MingdDataset(student, load_data=args.data_path + "/train"),
+        dataloader = DataLoader(MingdDataset(None, load_data=args.data_path + "/train"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
         torch.save(train_d, f"{args.file_dir}/cust_train_{args.feature_type}_vulnerability.pt")
 
         print("\nCustom Test set features:")
-        dataloader = DataLoader(MingdDataset(student, load_data=args.data_path + "/test"),
+        dataloader = DataLoader(MingdDataset(None, load_data=args.data_path + "/test"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
         torch.save(train_d, f"{args.file_dir}/cust_test_{args.feature_type}_vulnerability.pt")
 
         print("\nCustom Random set features:")
-        dataloader = DataLoader(MingdDataset(student, load_data=args.data_path + "/random"),
+        dataloader = DataLoader(MingdDataset(None, load_data=args.data_path + "/random"),
                                 batch_size=args.batch_size, shuffle=True)
         train_d = func(args, dataloader, student, num_images=args.epochs)
         torch.save(train_d, f"{args.file_dir}/cust_random_{args.feature_type}_vulnerability.pt")

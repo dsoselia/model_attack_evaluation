@@ -7,6 +7,7 @@ import os
 # Local Imports
 from generate_features import feature_extractor
 from mingd_dataloader import MingdDataset
+from dataset_inference import eval_modes
 from model_src import WideResNet
 from train import trainer
 import params
@@ -124,3 +125,8 @@ if __name__ == "__main__":
     args.batch_size = 50  # Based on space. Preferable a factor of args.epochs
     args.data_path = "../data/cust_cifar10/"  # Path to custom data or None for only original data
     gen_features(args, models)
+
+    dist_data = ['train', 'cust_train', 'cust_test', 'cust_random']
+    for dataset in dist_data:
+        print(f"\nTraining on test data and {dataset} data:")
+        eval_modes(models, dataset)

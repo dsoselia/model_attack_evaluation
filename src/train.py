@@ -7,7 +7,6 @@ import os
 from model_src import *
 from funcs import *
 import params
-import wandb
 
 '''Threat Models'''
 # A) complete model theft
@@ -120,7 +119,7 @@ def epoch_test(args, loader, model, stop=False):
     return test_loss / test_n, test_acc / test_n
 
 
-def trainer(args, run = None):
+def trainer(args, run=None):
     train_loader, test_loader = get_dataloaders(args.dataset, args.batch_size)
     if args.mode == "independent":
         train_loader, test_loader = test_loader, train_loader

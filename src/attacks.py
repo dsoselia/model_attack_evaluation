@@ -116,7 +116,6 @@ def rand_steps(model, X, y, args, target=None):
 
 
 def mingd(model, X, y, args, target):
-    start = time.time()
     is_training = model.training
     model.eval()  # Need to freeze the batch norm and dropouts
     alpha_map = {"l1": args.alpha_l_1 / args.k, "l2": args.alpha_l_2, "linf": args.alpha_l_inf}
@@ -128,6 +127,11 @@ def mingd(model, X, y, args, target):
     X_r = X[remaining]
     delta_r = delta[remaining]
     delta_r.requires_grad = True
+    if remaining.sum() == 0:
+        if is_training:
+            model.train()
+        return delta
+
     for t in range(args.num_iter):
         # Pass inputs as parameters
         preds = model(X_r + delta_r)
